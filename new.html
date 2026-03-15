@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Find Radhika 💛</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  body {
+    background: #fdf6ee;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 28px 16px 20px;
+    font-family: 'Caveat', cursive;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  header {
+    text-align: center;
+  }
+  header h1 {
+    font-size: 1.55rem;
+    color: #d9536f;
+    font-weight: 700;
+  }
+  header p {
+    font-size: 1rem;
+    color: #c4a0a8;
+    margin-top: 2px;
+  }
+
+  /* MAZE */
+  #maze-wrap {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 2.5px solid #f2c4cf;
+    box-shadow: 0 6px 28px #f2c4cf30;
+    flex-shrink: 0;
+  }
+  canvas { display: block; }
+
+  /* CONTROLS */
+  #dpad {
+    display: grid;
+    grid-template-areas: ". u ." "l d r";
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .d { grid-area:d; } .u { grid-area:u; }
+  .l { grid-area:l; } .r { grid-area:r; }
+
+  .dkey {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #f2c4cf;
+    font-size: 1.5rem;
+    color: #d9536f;
+    display: flex; align-items:center; justify-content:center;
+    cursor: pointer;
+    box-shadow: 0 3px 10px #f2c4cf30;
+    transition: background .1s, transform .1s;
+    -webkit-user-select: none;
+  }
+  .dkey:active { background: #fde0e8; transform: scale(0.9); }
+
+  /* WIN */
+  #win {
+    display: none;
+    position: fixed; inset:0;
+    background: rgba(253,246,238,0.95);
+    backdrop-filter: blur(8px);
+    align-items:center; justify-content:center;
+    z-index:99;
+  }
+  #win.show { display:flex; }
+  #win-card {
+    background: #fff;
+    border-radius: 28px;
+    padding: 40px 36px;
+    text-align: center;
+    border: 2.5px solid #f2c4cf;
+    box-shadow: 0 16px 48px #f2c4cf40;
+    animation: pop .4s cubic-bezier(.34,1.56,.64,1);
+    max-width: 320px;
+    width: 88vw;
+  }
+  @keyframes pop { from{transform:scale(.5);opacity:0} to{transform:scale(1);opacity:1} }
+
+  #win-emojis { font-size: 3.6rem; margin-bottom: 14px; animation: bounce 1s ease-in-out infinite; }
+  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+  #win-msg { font-size: 1.9rem; color: #d9536f; line-height: 1.5; }
+
+  #again {
+    margin-top: 22px;
+    background: #d9536f;
+    color: #fff;
+    border: none;
+    border-radius: 50px;
+    padding: 12px 34px;
+    font-family: 'Caveat', cursive;
+    font-size: 1.2rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: .3px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Find Radhika 💛</h1>
+  <p>swipe or use buttons to reach her</p>
+</header>
+
+<div id="maze-wrap"><canvas id="c"></canvas></div>
+
+<div id="dpad">
+  <button class="dkey u" ontouchstart="mv(0,-1)" onclick="mv(0,-1)">↑</button>
+  <button class="dkey l" ontouchstart="mv(-1,0)" onclick="mv(-1,0)">←</button>
+  <button class="dkey d" ontouchstart="mv(0,1)"  onclick="mv(0,1)">↓</button>
+  <button class="dkey r" ontouchstart="mv(1,0)"  onclick="mv(1,0)">→</button>
+</div>
+
+<div id="win">
+  <div id="win-card">
+    <div id="win-emojis">👦❤️👧</div>
+    <div id="win-msg">Great!<br>You've got your<br>Radhikaa 🌸💛</div>
+    <button id="again" onclick="init()">Play again 🔄</button>
+  </div>
+</div>
+
+<script>
+// ── sizing: fill available space ─────────────────────
+const vw = Math.min(window.innerWidth, 420);
+const vh = window.innerHeight;
+// leave room for header (~80px) + dpad (~160px) + gaps
+const available = vh - 80 - 160 - 60;
+const COLS = 7, ROWS = 9;
+const CELL = Math.floor(Math.min(vw * 0.88 / COLS, available / ROWS, 46));
+const W = COLS * CELL, H = ROWS * CELL;
+
+const canvas = document.getElementById('c');
+canvas.width = W; canvas.height = H;
+const wrap = document.getElementById('maze-wrap');
+wrap.style.width  = W + 'px';
+wrap.style.height = H + 'px';
+const ctx = canvas.getContext('2d');
+
+const END = { x: COLS-1, y: ROWS-1 };
+let grid, vis, px, py;
+
+const i = (x,y) => y*COLS+x;
+
+function shuffle(a){
+  for(let n=a.length-1;n>0;n--){const j=0|Math.random()*(n+1);[a[n],a[j]]=[a[j],a[n]];}
+  return a;
+}
+
+function carve(x,y){
+  vis[i(x,y)]=true;
+  for(const [dx,dy] of shuffle([[1,0],[-1,0],[0,1],[0,-1]])){
+    const nx=x+dx,ny=y+dy;
+    if(nx<0||nx>=COLS||ny<0||ny>=ROWS||vis[i(nx,ny)]) continue;
+    if(dx===1)  grid[i(x,y)].r=false;
+    if(dx===-1) grid[i(nx,ny)].r=false;
+    if(dy===1)  grid[i(x,y)].b=false;
+    if(dy===-1) grid[i(nx,ny)].b=false;
+    carve(nx,ny);
+  }
+}
+
+function init(){
+  document.getElementById('win').classList.remove('show');
+  grid = Array.from({length:COLS*ROWS},()=>({r:true,b:true}));
+  vis  = new Array(COLS*ROWS).fill(false);
+  carve(0,0);
+  px=0; py=0;
+  draw();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+
+  // bg
+  ctx.fillStyle='#fffaf5';
+  ctx.fillRect(0,0,W,H);
+
+  // highlight end cell
+  ctx.fillStyle='#fde8ef';
+  ctx.beginPath();
+  ctx.roundRect(END.x*CELL+2, END.y*CELL+2, CELL-4, CELL-4, 6);
+  ctx.fill();
+
+  // walls
+  ctx.strokeStyle='#f0bfc9';
+  ctx.lineWidth=2;
+  ctx.lineCap='square';
+
+  for(let y=0;y<ROWS;y++){
+    for(let x=0;x<COLS;x++){
+      const c=grid[i(x,y)];
+      const x0=x*CELL, y0=y*CELL;
+      if(c.r && x<COLS-1){
+        ctx.beginPath(); ctx.moveTo(x0+CELL,y0); ctx.lineTo(x0+CELL,y0+CELL); ctx.stroke();
+      }
+      if(c.b && y<ROWS-1){
+        ctx.beginPath(); ctx.moveTo(x0,y0+CELL); ctx.lineTo(x0+CELL,y0+CELL); ctx.stroke();
+      }
+    }
+  }
+
+  // outer border
+  ctx.strokeStyle='#e8a0b0';
+  ctx.lineWidth=2.5;
+  ctx.strokeRect(1,1,W-2,H-2);
+
+  const fs = Math.round(CELL * 0.62);
+  ctx.font = `${fs}px serif`;
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+
+  // girl at end
+  ctx.fillText('👧', END.x*CELL+CELL/2, END.y*CELL+CELL/2);
+
+  // boy (player)
+  ctx.fillText('👦', px*CELL+CELL/2, py*CELL+CELL/2);
+}
+
+function mv(dx,dy){
+  const nx=px+dx, ny=py+dy;
+  if(nx<0||nx>=COLS||ny<0||ny>=ROWS) return;
+  let ok=false;
+  if(dx===1  && !grid[i(px,py)].r)  ok=true;
+  if(dx===-1 && !grid[i(nx,ny)].r)  ok=true;
+  if(dy===1  && !grid[i(px,py)].b)  ok=true;
+  if(dy===-1 && !grid[i(nx,ny)].b)  ok=true;
+  if(!ok) return;
+  px=nx; py=ny; draw();
+  if(px===END.x && py===END.y)
+    setTimeout(()=>document.getElementById('win').classList.add('show'), 200);
+}
+
+// keyboard
+document.addEventListener('keydown',e=>{
+  const map={'ArrowUp':[0,-1],'ArrowDown':[0,1],'ArrowLeft':[-1,0],'ArrowRight':[1,0]};
+  if(map[e.key]){ e.preventDefault(); mv(...map[e.key]); }
+});
+
+// swipe
+let tx=0,ty=0;
+document.addEventListener('touchstart',e=>{
+  // ignore dpad touches
+  if(e.target.classList.contains('dkey')) return;
+  tx=e.touches[0].clientX; ty=e.touches[0].clientY;
+},{passive:true});
+document.addEventListener('touchend',e=>{
+  if(e.target.classList.contains('dkey')) return;
+  const dx=e.changedTouches[0].clientX-tx;
+  const dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)<12 && Math.abs(dy)<12) return;
+  if(Math.abs(dx)>Math.abs(dy)) mv(dx>0?1:-1,0);
+  else mv(0,dy>0?1:-1);
+},{passive:true});
+
+init();
+</script>
+</body>
+</html>
